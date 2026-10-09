@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sacred Roguelike</title>
+
+  <style>
+  /* ──────────────────────────────────────────────
+     Файл: css/main.css
+     Ранее: внешний stylesheet href="css/main.css", подключался в HEAD
+     ────────────────────────────────────────────── */
+:root {
+  --bg: #0a0a0a;
+  --panel: #1a1a1a;
+  --panel-2: #222;
+  --line: #3a3a3a;
+  --text: #e0e0e0;
+  --muted: #999;
+  --accent: #f0c040;
+  --danger: #c04040;
+  --btn: #3a5fcd;
+  --btn-line: #5c7ee6;
+  --danger-text: #ff8a8a;
+
+  /* ---------- ПОЛЕ: три состояния разведены по яркости ----------
+     туман 2.7:1 к фронту, 15:1 к открытому полу,
+     фронт 5:1 к полу — раньше все три лежали в диапазоне 6-51 по яркости */
+  --fog-bg: #101319;
+  --fog-line: #1b202b;
+  --front-bg: #4a5a82;
+  --front-line: #8fa3d8;
+  --front-hover: #5d6f9e;
+  --open-bg: #e6eaf2;
+  --open-line: #b6c0d4;
+  --wall-bg: #3a4050;
+  --wall-line: #6b7690;
+  --lock: #ff7b7b;
+  --hit: #d43b4b;
+
+  /* ---------- содержимое открытой клетки: фон + цвет символа ---------- */
+  --c-empty:    #e6eaf2;  --g-empty:    #7a8494;
+  --c-wall:     #3a4050;  --g-wall:     #c9d2e2;
+  --c-trap:     #f6dcb0;  --g-trap:     #7a4200;
+  --c-exit:     #c3e6cd;  --g-exit:     #0f5a2b;
+  --c-key:      #cddcff;  --g-key:      #14347f;
+  --c-currency: #ffe6a3;  --g-currency: #6b4a00;
+  --c-potion:   #ffd0d6;  --g-potion:   #8c1220;
+  --c-weapon:   #ffe0ae;  --g-weapon:   #8a5200;
+  --c-shield:   #ded2ff;  --g-shield:   #4a2b8f;
+  --c-enemy:    #f3bcaf;  --g-enemy:    #7d1f14;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", Tahoma, Verdana, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#game-container {
+  width: 100%;
+  max-width: 480px;
+  height: 100vh;
+  max-height: 860px;
+  background: var(--panel);
+  border: 3px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+
+.game-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.game-screen.hidden { display: none !important; }
+
+h1, h2 { text-align: center; }
+.title { font-size: 1.7rem; color: var(--accent); margin-top: 18px; }
+h2 { font-size: 1.3rem; }
+
+.main-btn {
+  padding: 14px;
+  font-size: 1.05rem;
+  font-weight: bold;
+  cursor: pointer;
+  color: #fff;
+  background: var(--btn);
+  border: 2px solid var(--btn-line);
+  border-radius: 6px;
+  transition: background .15s, transform .1s;
+}
+.main-btn:active { transform: scale(.97); background: #4a6fdd; }
+
+.secondary-btn {
+  padding: 11px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid #555;
+  border-radius: 6px;
+}
+.secondary-btn:active { transform: scale(.97); }
+
+/* ---------- эффекты из animations.js ---------- */
+.tile.hit { box-shadow: 0 0 0 3px var(--hit) inset; transition: none; }
+.grid-wrap.shake { animation: shake .22s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-3px, 0); }
+  75% { transform: translate(3px, 0); }
+}
+.overlay.flash { animation: flash .3s ease-out; }
+@keyframes flash {
+  from { background: rgba(160, 30, 30, .55); }
+  to { background: rgba(0, 0, 0, .82); }
+}
+
+/* ---------- оверлей смерти ---------- */
+.overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, .82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.overlay.hidden { display: none !important; }
+.overlay-inner {
+  width: 100%;
+  max-width: 300px;
+  background: var(--panel-2);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  padding: 20px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.overlay-inner h2 { color: var(--danger); }
+.overlay-inner p { color: var(--muted); }
+
+.icon-btn {
+  width: 32px;
+  height: 30px;
+  font-size: 1rem;
+  color: var(--muted);
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.icon-btn:active { background: #444; }
+  </style>
+  <style>
+  /* ──────────────────────────────────────────────
+     Файл: css/screens/start.css
+     Ранее: внешний stylesheet href="css/screens/start.css", подключался в HEAD
+     ────────────────────────────────────────────── */
+.records-box {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: .95rem;
+}
+.records-box p { margin: 5px 0; }
+.records-box span { color: var(--accent); font-weight: bold; }
+
+#screen-start .main-btn { margin-top: 10px; }
+
+/* ---------- кнопка очистки сохранений ---------- */
+#btn-clear-save {
+  margin-top: 4px;
+  padding: 10px;
+  font-size: .9rem;
+  cursor: pointer;
+  color: var(--danger-text);
+  background: transparent;
+  border: 2px solid var(--danger);
+  border-radius: 6px;
+  transition: background .15s, transform .1s;
+}
+#btn-clear-save:active { transform: scale(.97); background: rgba(192, 64, 64, .18); }
+#btn-clear-save:disabled {
+  cursor: not-allowed;
+  color: #5e5e5e;
+  border-color: #3a3a3a;
+  background: transparent;
+}
+
+#clear-note.clear-note {
+  min-height: 1.1em;
+  text-align: center;
+  font-size: .8rem;
+  color: var(--muted);
+}
+#clear-note.clear-note.good { color: #7fc07f; }
+  </style>
+  <style>
+  /* ──────────────────────────────────────────────
+     Файл: css/screens/character.css
+     Ранее: внешний stylesheet href="css/screens/character.css", подключался в HEAD
+     ────────────────────────────────────────────── */
+.carousel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.arrow-btn {
+  flex: 0 0 44px;
+  height: 54px;
+  font-size: 1.3rem;
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.arrow-btn:active { transform: scale(.94); background: #444; }
+
+.hero-card {
+  flex: 1;
+  background: #2a2a2a;
+  border: 2px solid #444;
+  border-radius: 10px;
+  padding: 14px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+.hero-icon { font-size: 2.6rem; line-height: 1; }
+.hero-name { font-size: 1.25rem; font-weight: bold; margin: 8px 0 6px; }
+.hero-stats p { margin: 3px 0; font-size: .95rem; }
+.hero-desc { margin-top: 10px; font-size: .82rem; font-style: italic; color: var(--muted); line-height: 1.3; }
+.hero-ability {
+  margin-top: 10px;
+  padding: 8px;
+  background: #1a1a1a;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: .78rem;
+  color: var(--accent);
+  line-height: 1.3;
+  text-align: left;
+}
+.hero-actions { display: flex; flex-direction: column; gap: 8px; }
+  </style>
+  <style>
+  /* ──────────────────────────────────────────────
+     Файл: css/screens/dungeon.css
+     Ранее: внешний stylesheet href="css/screens/dungeon.css", подключался в HEAD
+     ────────────────────────────────────────────── */
+.top-hud, .bottom-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 2px solid #444;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.hud-item { font-weight: bold; font-size: 1rem; }
+.floor-indicator { font-weight: bold; color: var(--accent); letter-spacing: 1px; font-size: .85rem; }
+
+/* квадрат держит обёртка, а не сама сетка */
+.grid-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#game-grid {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 100%;
+  padding: 4px;
+  background: #111;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border: 1px solid var(--fog-line);
+  background: var(--fog-bg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: background-color .15s, transform .1s;
+}
+
+/* символ содержимого: кегль считается от размера клетки (--cell-fs) */
+.glyph {
+  font-size: var(--cell-fs, 1.1rem);
+  font-weight: bold;
+  line-height: 1;
+  color: var(--g-empty);
+}
+.num {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: calc(var(--cell-fs, 1.1rem) * .5);
+  line-height: 1.2;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .75);
+  color: #fff;
+}
+
+/* ТУМАН — слой, а не третье состояние клетки.
+   Закрытая клетка почти чёрная, фронт — средний сине-серый со светлой
+   рамкой «сюда можно идти», открытая — светлая. Разница 2.7:1 и 15:1. */
+.tile.closed::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--fog-bg);
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity .28s ease, background-color .28s ease;
+}
+/* фронт тумана: тот же слой, но заметно светлее тумана */
+.tile.closed.reachable { border-color: var(--front-line); }
+.tile.closed.reachable::after { background: var(--front-bg); }
+.tile.closed.reachable:hover::after { background: var(--front-hover); }
+.tile.closed.reachable:active { transform: scale(.95); }
+/* открытая клетка — слой убран, отсюда «рассеивание» */
+.tile.opened { border-color: var(--open-line); }
+.tile.opened::after { opacity: 0; }
+
+/* ✕ — про проходимость, а не про «внутри враг» */
+.tile.locked { cursor: not-allowed; }
+.tile.locked .xmark {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lock);
+  font-size: calc(var(--cell-fs, 1.1rem) * 1.45);
+  font-weight: bold;
+  pointer-events: none;
+  text-shadow: 0 0 4px rgba(0, 0, 0, .9);
+}
+
+.tile.opened.c-empty { cursor: default; background: var(--c-empty); }
+.tile.opened.c-empty .glyph { color: var(--g-empty); }
+
+/* стена — штриховка, чтобы не читалась как пустой пол */
+.tile.opened.c-wall {
+  cursor: default;
+  border-color: var(--wall-line);
+  background-color: var(--c-wall);
+  background-image: repeating-linear-gradient(45deg,
+    rgba(255, 255, 255, .13) 0 2px, transparent 2px 6px);
+}
+.tile.opened.c-wall .glyph { color: var(--g-wall); }
+
+.tile.opened.c-trap { cursor: default; background: var(--c-trap); }
+.tile.opened.c-trap .glyph { color: var(--g-trap); }
+.tile.opened.c-exit { background: var(--c-exit); }
+.tile.opened.c-exit .glyph { color: var(--g-exit); }
+.tile.opened.c-key .glyph { color: var(--g-key); }
+.tile.opened.c-currency .glyph { color: var(--g-currency); }
+.tile.opened.c-potion .glyph { color: var(--g-potion); }
+.tile.opened.c-weapon .glyph { color: var(--g-weapon); }
+.tile.opened.c-shield .glyph { color: var(--g-shield); }
+.tile.opened.c-enemy .glyph { color: var(--g-enemy); }
+.tile.opened.c-key { background: var(--c-key); }
+.tile.opened.c-currency { background: var(--c-currency); }
+.tile.opened.c-potion { background: var(--c-potion); }
+.tile.opened.c-weapon { background: var(--c-weapon); }
+.tile.opened.c-shield { background: var(--c-shield); }
+.tile.opened.c-enemy { background: var(--c-enemy); }
+
+.combat-log {
+  flex-shrink: 0;
+  height: 160px;
+  overflow-y: auto;
+  padding: 6px 10px;
+  background: #0a0a0a;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  font-size: .78rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+.combat-log p { margin-bottom: 2px; }
+.combat-log .bad { color: #d07070; }
+.combat-log .good { color: #7fc07f; }
+.combat-log .hi { color: var(--accent); }
+
+.inventory-slots { display: flex; gap: 5px; }
+.slot {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  border: 2px solid #555;
+  border-radius: 6px;
+  font-size: 1.15rem;
+  font-weight: bold;
+  color: var(--accent);
+}
+.player-stats { display: flex; gap: 9px; font-size: .95rem; font-weight: bold; }
+.stat-box { display: flex; align-items: center; gap: 3px; }
+  </style>
+  <style>
+  /* ──────────────────────────────────────────────
+     Файл: css/mobile.css
+     Ранее: внешний stylesheet href="css/mobile.css", подключался в HEAD
+     ────────────────────────────────────────────── */
+/* подключается последним: перебивает экраны */
+@supports (height: 100dvh) {
+  #game-container { height: 100dvh; }
+}
+
+@media (max-width: 420px) {
+  #game-container { border: none; max-height: none; }
+  .game-screen { padding: 10px; gap: 8px; }
+  .title { font-size: 1.4rem; }
+  .main-btn { padding: 13px; }
+}
+
+@media (max-width: 420px) and (orientation: portrait) {
+  #game-container {
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-height: 620px) {
+  .combat-log { max-height: 42px; }
+  .title { margin-top: 6px; font-size: 1.25rem; }
+}
+  </style>
+</head>
+<body>
+
+
+<div id="game-container">
+
+  <section id="screen-start" class="game-screen">
+    <h1 class="title">Sacred Roguelike</h1>
+    <div class="records-box">
+      <p>Лучший этаж: <span id="rec-floor">0</span></p>
+      <p>Убийств всего: <span id="rec-kills">0</span></p>
+    </div>
+    <button id="btn-to-character" class="main-btn">Начать игру</button>
+    <button id="btn-clear-save" class="danger-btn" disabled>Очистить сохранения</button>
+    <p id="clear-note" class="clear-note"></p>
+  </section>
+
+  <section id="screen-character" class="game-screen hidden">
+    <h2>Выбор героя</h2>
+    <div class="carousel">
+      <button id="btn-hero-prev" class="arrow-btn">&#9664;</button>
+      <div class="hero-card">
+        <div id="hero-icon" class="hero-icon">?</div>
+        <div id="hero-name" class="hero-name">-</div>
+        <div class="hero-stats">
+          <p>HP: <span id="hero-hp">0</span></p>
+          <p>ATK: <span id="hero-atk">0</span></p>
+          <p>DEF: <span id="hero-def">0</span></p>
+        </div>
+        <p id="hero-desc" class="hero-desc">-</p>
+        <p id="hero-ability" class="hero-ability">-</p>
+      </div>
+      <button id="btn-hero-next" class="arrow-btn">&#9654;</button>
+    </div>
+    <div class="hero-actions">
+      <button id="btn-to-dungeon" class="main-btn">Выбрать и играть</button>
+      <button id="btn-character-to-start" class="secondary-btn">В главное меню</button>
+    </div>
+  </section>
+
+  <section id="screen-dungeon" class="game-screen hidden">
+    <div class="top-hud">
+      <div class="hud-left">
+        <span class="hud-item">&#9679; <span id="hud-gold">0</span></span>
+      </div>
+      <div class="floor-indicator">ЭТАЖ <span id="hud-floor">1</span></div>
+      <div class="hud-right">
+        <span class="hud-item">&#9733; <span id="hud-kills">0</span></span>
+        <button id="btn-dungeon-to-start" class="icon-btn">&#9881;</button>
+      </div>
+    </div>
+
+    <div class="grid-wrap"><div id="game-grid"></div></div>
+
+    <div id="game-log" class="combat-log"></div>
+
+    <div class="bottom-hud">
+      <div class="inventory-slots">
+        <div id="slot-weapon" class="slot"></div>
+        <div id="slot-shield" class="slot"></div>
+        <div id="slot-item" class="slot"></div>
+      </div>
+      <div class="player-stats">
+        <span class="stat-box">&#10084; <span id="player-hp">0</span>/<span id="player-maxhp">0</span></span>
+        <span class="stat-box">&#10024; <span id="player-atk">0</span></span>
+        <span class="stat-box">&#9635; <span id="player-def">0</span></span>
+      </div>
+    </div>
+
+    <div id="death-overlay" class="overlay hidden">
+      <div class="overlay-inner">
+        <h2>Вы погибли</h2>
+        <p>Этаж: <span id="final-floor">1</span></p>
+        <button id="btn-death-retry" class="main-btn">Ещё забег</button>
+        <button id="btn-death-menu" class="secondary-btn">В главное меню</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/utils/storage.js
+  // Ранее: внешний скрипт src="js/utils/storage.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* LocalStorage, обёрнут в try/catch: на file:// он не всегда доступен */
+var GameStorage = {
+  KEY: 'sacred-roguelike-records',
+
+  read: function () {
+    var empty = { bestFloor: 0, totalKills: 0 };
+    try {
+      var raw = window.localStorage.getItem(GameStorage.KEY);
+      if (!raw) return empty;
+      var obj = JSON.parse(raw);
+      return {
+        bestFloor: obj.bestFloor || 0,
+        totalKills: obj.totalKills || 0
+      };
+    } catch (e) {
+      return empty;
+    }
+  },
+
+  /* забег окончен: складываем рекорды, ничего не затираем */
+  commit: function (floor, kills) {
+    var r = GameStorage.read();
+    r.bestFloor = Math.max(r.bestFloor, floor);
+    r.totalKills = r.totalKills + kills;
+    try {
+      window.localStorage.setItem(GameStorage.KEY, JSON.stringify(r));
+    } catch (e) { /* приватный режим — играем без рекордов */ }
+    return r;
+  },
+
+  /* есть ли вообще что стирать — для неактивной кнопки */
+  hasData: function () {
+    var r = GameStorage.read();
+    return r.bestFloor > 0 || r.totalKills > 0;
+  },
+
+  /* Стираем только свой ключ. На file:// origin у всех локальных страниц
+     один на всех: localStorage.clear() снёс бы и чужие сохранения. */
+  clear: function () {
+    try {
+      window.localStorage.removeItem(GameStorage.KEY);
+      return true;
+    } catch (e) { return false; }
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/utils/helpers.js
+  // Ранее: внешний скрипт src="js/utils/helpers.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* единая точка настроек + случайности */
+var CONFIG = {
+  SIZE: 7,                 /* размер поля: одна константа, квадрат гарантирован */
+  MAX_ATTEMPTS: 30,        /* попыток собрать связный этаж */
+  POTION_HEAL: 15,
+  TRAP_BASE: 4,
+  GOLD_BASE: 5,
+  GOLD_RAND: 6,
+  SEMIBOSS_CHANCE: 0.26,
+  /* бюджеты этажа — доли от площади, пересчёт на любой SIZE */
+  DENSITY: {
+    enemy: 0.19,
+    wall: 0.125,
+    trap: 0.05,
+    currency: 0.125,
+    potion: 0.08,
+    weapon: 0.03,
+    shield: 0.02
+  }
+};
+
+var Helpers = {
+
+  randInt: function (minIncl, maxIncl) {
+    return minIncl + Math.floor(Math.random() * (maxIncl - minIncl + 1));
+  },
+
+  chance: function (p) {
+    return Math.random() < p;
+  },
+
+  pick: function (arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  },
+
+  /* Fisher-Yates, на месте */
+  shuffle: function (arr) {
+    var i, j, t;
+    for (i = arr.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  },
+
+  /* взвешенный выбор: items = [{key, weight}, ...] */
+  weightedKey: function (items) {
+    var total = 0, i;
+    for (i = 0; i < items.length; i++) total += items[i].weight;
+    var roll = Math.random() * total;
+    for (i = 0; i < items.length; i++) {
+      roll -= items[i].weight;
+      if (roll <= 0) return items[i].key;
+    }
+    return items[items.length - 1].key;
+  },
+
+  clamp: function (v, lo, hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/ui/screenManager.js
+  // Ранее: внешний скрипт src="js/ui/screenManager.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+var ScreenManager = {
+  SCREENS: ['screen-start', 'screen-character', 'screen-dungeon'],
+  current: 'screen-start',
+
+  init: function () {
+    ScreenManager.show('screen-start');
+  },
+
+  show: function (id) {
+    var i, el;
+    for (i = 0; i < ScreenManager.SCREENS.length; i++) {
+      el = document.getElementById(ScreenManager.SCREENS[i]);
+      if (!el) continue;
+      if (ScreenManager.SCREENS[i] === id) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
+    ScreenManager.current = id;
+  },
+
+  /* привязка без повторов и без утечек слушателей */
+  on: function (id, handler) {
+    var el = document.getElementById(id);
+    if (!el) { console.error('Нет кнопки: #' + id); return; }
+    el.addEventListener('click', handler);
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/ui/animations.js
+  // Ранее: внешний скрипт src="js/ui/animations.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* эффекты — только CSS-классы, никаких таймеров в логике */
+var Animations = {
+  flash: function (tileEl) {
+    if (!tileEl) return;
+    tileEl.classList.add('hit');
+    window.setTimeout(function () { tileEl.classList.remove('hit'); }, 180);
+  },
+
+  shake: function () {
+    var wrap = document.querySelector('.grid-wrap');
+    if (!wrap) return;
+    wrap.classList.add('shake');
+    window.setTimeout(function () { wrap.classList.remove('shake'); }, 240);
+  },
+
+  /* «рассеивание тумана» — сам transition на ::after, здесь только вспышка слоя */
+  death: function () {
+    var ov = document.getElementById('death-overlay');
+    if (!ov) return;
+    ov.classList.remove('hidden');
+    ov.classList.remove('flash');
+    /* reflow, чтобы анимация перезапустилась */
+    void ov.offsetWidth;
+    ov.classList.add('flash');
+  },
+
+  hideDeath: function () {
+    var ov = document.getElementById('death-overlay');
+    if (ov) { ov.classList.add('hidden'); ov.classList.remove('flash'); }
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/ui/renderer.js
+  // Ранее: внешний скрипт src="js/ui/renderer.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* ЕДИНСТВЕННЫЙ слой, который трогает DOM. core/ не знает про getElementById. */
+var Renderer = {
+  grid: null,
+  logLimit: 40,
+
+  buildGrid: function () {
+    Renderer.grid = document.getElementById('game-grid');
+    var n = CONFIG.SIZE;
+    Renderer.grid.style.gridTemplateColumns = 'repeat(' + n + ', 1fr)';
+    Renderer.grid.style.gridTemplateRows = 'repeat(' + n + ', 1fr)';
+
+    Renderer.grid.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    var i, cell;
+    for (i = 0; i < n * n; i++) {
+      cell = document.createElement('div');
+      cell.className = 'tile closed';
+      cell.setAttribute('data-id', String(i));
+      frag.appendChild(cell);
+    }
+    Renderer.grid.appendChild(frag);
+    Renderer.sizeFont();
+  },
+
+  /* кегль внутри клетки считается от реальной ширины ячейки,
+     иначе на 10x10 бейдж HP не влезает */
+  sizeFont: function () {
+    if (!Renderer.grid) return;
+    var px = Renderer.grid.clientWidth / CONFIG.SIZE;
+    Renderer.grid.style.setProperty('--cell-fs', (px * 0.44).toFixed(2) + 'px');
+  },
+
+  cellEl: function (index) {
+    return Renderer.grid ? Renderer.grid.children[index] : null;
+  },
+
+  /* полная перерисовка поля по состоянию Dungeon.
+     64 клетки перекрашиваются за кадр — зато никогда нет рассинхрона тумана. */
+  renderFloor: function (cells) {
+    var i, cell, el, cls, html;
+    for (i = 0; i < cells.length; i++) {
+      cell = cells[i];
+      el = Renderer.cellEl(i);
+      if (!el) continue;
+
+      cls = 'tile';
+      if (cell.opened) {
+        cls += ' opened c-' + cell.type;
+      } else {
+        cls += ' closed';
+        if (cell.reachable) cls += ' reachable';
+        if (cell.lockCount > 0) cls += ' locked';
+      }
+      /* вспышка удара живёт 180 мс и переживает перерисовку поля */
+      if (el.classList.contains('hit')) cls += ' hit';
+      el.className = cls;
+
+      html = '';
+      if (cell.opened) {
+        html = '<span class="glyph">' + Dungeon.glyph(cell) + '</span>';
+        if (cell.enemy && cell.enemy.hp > 0) {
+          html += '<span class="num">' + cell.enemy.hp + '</span>';
+        }
+      } else if (cell.lockCount > 0) {
+        html = '<span class="xmark">&#10007;</span>';
+      }
+      if (el.innerHTML !== html) el.innerHTML = html;
+    }
+    Renderer.sizeFont();
+  },
+
+  updateHud: function (p) {
+    Renderer.text('hud-gold', p.gold);
+    Renderer.text('hud-floor', p.floor);
+    Renderer.text('hud-kills', p.kills);
+    Renderer.text('player-hp', p.hp);
+    Renderer.text('player-maxhp', p.maxHp);
+    Renderer.text('player-atk', Player.totalAtk(p));
+    Renderer.text('player-def', Player.totalDef(p));
+    Renderer.text('slot-weapon', p.weapon ? p.weapon.glyph : '');
+    Renderer.text('slot-shield', p.shield ? p.shield.glyph : '');
+    Renderer.text('slot-item', p.hasKey ? 'K' : '');
+  },
+
+  note: function (id, value, kind) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = String(value);
+    el.className = 'clear-note' + (kind ? ' ' + kind : '');
+  },
+
+  text: function (id, value) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = String(value);
+  },
+
+  log: function (msg, kind) {
+    var box = document.getElementById('game-log');
+    if (!box) return;
+    var p = document.createElement('p');
+    if (kind) p.className = kind;
+    p.textContent = msg;
+    box.appendChild(p);
+    while (box.children.length > Renderer.logLimit) {
+      box.removeChild(box.firstChild);
+    }
+    box.scrollTop = box.scrollHeight;
+  },
+
+  clearLog: function () {
+    var box = document.getElementById('game-log');
+    if (box) box.innerHTML = '';
+  },
+
+  showDeath: function (floor) {
+    Renderer.text('final-floor', floor);
+    Animations.death();
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/entities/player.js
+  // Ранее: внешний скрипт src="js/entities/player.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* Герои — заглушки. Имена, иконки и описания меняются в одном месте.
+   Формулы пассивок — здесь же, их менять интереснее всего. */
+var HEROES = [
+  {
+    name: 'Кубик', glyph: '🦏',
+    hp: 50, atk: 8, def: 0,
+    desc: 'Много HP, невысокий урон.',
+    ability: 'Весь входящий урон -2.',
+    flatReduce: 2
+  },
+  {
+    name: 'Пирамида', glyph: '🐗',
+    hp: 25, atk: 13, def: 0,
+    desc: 'Мало HP, большой урон.',
+    ability: '30% шанс двойного урона.',
+    critChance: 0.30
+  },
+  {
+    name: 'Конус', glyph: '🦄',
+    hp: 40, atk: 5, def: 2,
+    desc: 'Слабая атака, но лечится с убийства.',
+    ability: '+5 HP за убитого врага.',
+    healOnKill: 5
+  },
+  {
+    name: 'Ромб', glyph: '🐏',
+    hp: 20, atk: 16, def: 0,
+    desc: 'Максимальный урон, хрупкий.',
+    ability: 'Каждый удар пробивает на +3.',
+    pierce: 3
+  },
+  {
+    name: 'Крест', glyph: '🦔',
+    hp: 30, atk: 9, def: 0,
+    desc: 'Бьёт не один.',
+    ability: 'Каждый 3-й удар: +20% от МАКС HP носителя.',
+    petEvery: 3, petPct: 0.20
+  },
+  {
+    name: 'Шар', glyph: '🦈',
+    hp: 35, atk: 11, def: 1,
+    desc: 'Два удара вместо одного.',
+    ability: '25% шанс ударить дважды.',
+    doubleChance: 0.25
+  }
+];
+
+var Player = {
+
+  create: function (hero) {
+    return {
+      hero: hero,
+      hp: hero.hp,
+      maxHp: hero.hp,
+      baseAtk: hero.atk,
+      baseDef: hero.def,
+      gold: 0,
+      floor: 1,
+      kills: 0,
+      attackCounter: 0,
+      hasKey: false,
+      weapon: null,
+      shield: null
+    };
+  },
+
+  totalAtk: function (p) {
+    return p.baseAtk + (p.weapon ? p.weapon.bonus : 0);
+  },
+
+  totalDef: function (p) {
+    return p.baseDef + (p.shield ? p.shield.bonus : 0);
+  },
+
+  /* все пассивки читаются через этот доступ — null-safe */
+  heroValue: function (p, key, byDefault) {
+    var v = p.hero[key];
+    return (typeof v === 'number') ? v : byDefault;
+  },
+
+  /* оружие и щит заменяются, старый предмет не возвращается */
+  equipWeapon: function (p, item) {
+    var old = p.weapon; p.weapon = item; return old;
+  },
+
+  equipShield: function (p, item) {
+    var old = p.shield; p.shield = item; return old;
+  },
+
+  heal: function (p, amount) {
+    /* в полный HP зелье идёт в максимум — это главный рычаг прокачки */
+    if (p.hp >= p.maxHp) {
+      p.maxHp += amount; p.hp += amount;
+      return { kind: 'max', amount: amount };
+    }
+    var real = Math.min(amount, p.maxHp - p.hp);
+    p.hp += real;
+    return { kind: 'heal', amount: real };
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/entities/monsters.js
+  // Ранее: внешний скрипт src="js/entities/monsters.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* Враги — заглушки, но поведение здесь настоящее.
+   scale = прирост за этаж: линейный, как в ориентире. */
+var MONSTERS = [
+  { key: 'mobA', name: 'Обломок', glyph: 'm', weight: 40,
+    hp: 20, atk: 4, hpScale: 5, atkScale: 2, armor: 0,
+    behavior: 'normal' },
+
+  { key: 'mobB', name: 'Тень', glyph: 't', weight: 25,
+    hp: 12, atk: 6, hpScale: 3, atkScale: 1, armor: 0,
+    behavior: 'firstStrike' },
+
+  { key: 'mobC', name: 'Осколок', glyph: 'k', weight: 20,
+    hp: 15, atk: 6, hpScale: 4, atkScale: 3, armor: 1,
+    behavior: 'normal' },
+
+  { key: 'mobD', name: 'Голем', glyph: 'g', weight: 15,
+    hp: 35, atk: 8, hpScale: 8, atkScale: 3, armor: 2,
+    behavior: 'slow' }
+];
+
+var SEMIBOSS = {
+  key: 'boss', name: 'Ядро', glyph: 'X',
+  hp: 60, atk: 10, hpScale: 12, atkScale: 3, armor: 2,
+  behavior: 'normal', isBoss: true
+};
+
+var Monsters = {
+
+  make: function (floor) {
+    var key = Helpers.weightedKey([
+      { key: 'mobA', weight: MONSTERS[0].weight },
+      { key: 'mobB', weight: MONSTERS[1].weight },
+      { key: 'mobC', weight: MONSTERS[2].weight },
+      { key: 'mobD', weight: MONSTERS[3].weight }
+    ]);
+    var t = null, i;
+    for (i = 0; i < MONSTERS.length; i++) {
+      if (MONSTERS[i].key === key) t = MONSTERS[i];
+    }
+    return Monsters.build(t, floor, false);
+  },
+
+  makeBoss: function (floor) {
+    return Monsters.build(SEMIBOSS, floor, true);
+  },
+
+  build: function (t, floor, isBoss) {
+    var hp = t.hp + t.hpScale * (floor - 1);
+    return {
+      key: t.key,
+      name: t.name,
+      glyph: t.glyph,
+      hp: hp,
+      maxHp: hp,
+      atk: t.atk + t.atkScale * (floor - 1),
+      armor: t.armor,
+      behavior: t.behavior,
+      isBoss: isBoss,
+      hasStruck: false,   /* «первый удар» должен быть ровно один за бой */
+      turnCounter: 0
+    };
+  },
+
+  rewardGold: function (enemy, floor) {
+    return enemy.isBoss ? 30 + floor * 6 : Helpers.randInt(5, 10) + floor;
+  }
+};
+
+var Loot = {
+  WEAPON_NAMES: ['Резец', 'Клин', 'Сквозняк', 'Жернов', 'Игла'],
+  SHIELD_NAMES: ['Панцирь', 'Створка', 'Плита', 'Покров'],
+
+  weapon: function (floor) {
+    var spread = floor * 2 + 3;
+    return {
+      name: Helpers.pick(Loot.WEAPON_NAMES),
+      glyph: '+',
+      bonus: floor + 2 + Helpers.randInt(0, spread - 1)
+    };
+  },
+
+  shield: function (floor) {
+    return {
+      name: Helpers.pick(Loot.SHIELD_NAMES),
+      glyph: '#',
+      bonus: floor + 1 + Helpers.randInt(0, floor + 1)
+    };
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/core/combat.js
+  // Ранее: внешний скрипт src="js/core/combat.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* Чистая арифметика. Про DOM, про Dungeon, про Renderer — ничего не знает.
+   Вход: player, enemy. Выход: {lines, enemyHp, playerHp, killed, fx}. */
+var Combat = {
+
+  /* один удар игрока по врагу: hit -> crit -> armor(min 1) */
+  oneHit: function (player, enemy) {
+    var dmg = Player.totalAtk(player) + Player.heroValue(player, 'pierce', 0);
+    var crit = false;
+
+    if (Helpers.chance(Player.heroValue(player, 'critChance', 0))) {
+      dmg = dmg * 2;
+      crit = true;
+    }
+
+    /* pet: каждый N-й удар (счётчик ведёт combat, сброс не между этажами) */
+    var pet = 0;
+    var every = Player.heroValue(player, 'petEvery', 0);
+    if (every > 0 && player.attackCounter % every === 0) {
+      pet = Math.floor(player.maxHp * Player.heroValue(player, 'petPct', 0));
+    }
+
+    dmg += pet;
+
+    /* минимум 1 урон: броня не должна делать бой бессмысленным */
+    var dealt = Math.max(1, dmg - enemy.armor);
+    enemy.hp -= dealt;
+
+    return { dealt: dealt, crit: crit, pet: pet };
+  },
+
+  /* входящий урон: def -> плоское снижение -> минимум 1 */
+  damageToPlayer: function (player, enemyAtk) {
+    var raw = enemyAtk - Player.totalDef(player);
+    raw -= Player.heroValue(player, 'flatReduce', 0);
+    return Math.max(1, raw);
+  },
+
+  attack: function (player, enemy) {
+    var lines = [], fx = [];
+    var enemyHpBefore = enemy.hp;
+
+    /* --- первый удар врага, ровно один за бой --- */
+    if (enemy.behavior === 'firstStrike' && !enemy.hasStruck) {
+      enemy.hasStruck = true;
+      var pre = Combat.damageToPlayer(player, enemy.atk);
+      player.hp -= pre;
+      lines.push({ text: enemy.name + ' бьёт первым: -' + pre + ' HP', kind: 'bad' });
+      fx.push('shake');
+      if (player.hp <= 0) {
+        player.hp = 0;
+        return { lines: lines, fx: fx, killed: false, playerDead: true };
+      }
+    }
+
+    /* --- ответ врага: медленный бьёт раз в два обмена --- */
+    var enemyActs = true;
+    if (enemy.behavior === 'slow') {
+      enemy.turnCounter++;
+      enemyActs = (enemy.turnCounter % 2 === 0);
+    }
+
+    /* --- удары игрока: double = ДВА раздельных урона
+       (против брони это слабее, чем крит x2 — различие намеренное) --- */
+    var hits = 1;
+    if (Helpers.chance(Player.heroValue(player, 'doubleChance', 0))) hits = 2;
+
+    var totalDealt = 0, i, hit;
+    for (i = 0; i < hits; i++) {
+      player.attackCounter++;
+      hit = Combat.oneHit(player, enemy);
+      totalDealt += hit.dealt;
+      if (hit.crit) lines.push({ text: 'Двойной урон!', kind: 'hi' });
+      if (hit.pet > 0) lines.push({ text: 'Спутник: +' + hit.pet, kind: 'hi' });
+      if (enemy.hp <= 0) break;   /* цель мертва — второй удар не тратится */
+    }
+
+    lines.push({ text: 'Ты: -' + totalDealt + ' (' + enemy.name + ')', kind: '' });
+    fx.push('flash');
+
+    /* --- смерть врага --- */
+    if (enemy.hp <= 0) {
+      enemy.hp = 0;
+      player.kills += enemy.isBoss ? 3 : 1;
+      var gold = Monsters.rewardGold(enemy, player.floor);
+      player.gold += gold;
+      lines.push({ text: enemy.name + ' разрушен (+' + gold + ' золота)', kind: 'good' });
+
+      var heal = Player.heroValue(player, 'healOnKill', 0);
+      if (heal > 0) {
+        var h = Player.heal(player, heal);
+        if (h.amount > 0) {
+          lines.push({ text: 'Регенерация: +' + h.amount + ' HP', kind: 'good' });
+        }
+      }
+      return { lines: lines, fx: fx, killed: true, playerDead: false };
+    }
+
+    /* --- ответный удар --- */
+    if (!enemyActs) {
+      lines.push({ text: enemy.name + ' замахивается...', kind: '' });
+      return { lines: lines, fx: fx, killed: false, playerDead: false, enemyHp: enemy.hp };
+    }
+    var back = Combat.damageToPlayer(player, enemy.atk);
+    player.hp -= back;
+    lines.push({ text: enemy.name + ': -' + back + ' HP', kind: 'bad' });
+    fx.push('shake');
+
+    if (player.hp <= 0) {
+      player.hp = 0;
+      return { lines: lines, fx: fx, killed: false, playerDead: true };
+    }
+
+    return { lines: lines, fx: fx, killed: false, playerDead: false, enemyHpBefore: enemyHpBefore };
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/core/dungeon.js
+  // Ранее: внешний скрипт src="js/core/dungeon.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* Генерация, туман, локи и клики по полю.
+   Никакого DOM: только массив cells и списки событий. */
+var Dungeon = {
+  cells: null,
+  size: 0,
+
+  GLYPHS: {
+    empty: '',
+    wall: '#',
+    trap: '!',
+    currency: '$',
+    potion: '+',
+    key: 'K',
+    exit: '>',
+    weapon: '/',
+    shield: '[]',
+    enemy: 'm'
+  },
+
+  glyph: function (cell) {
+    if (cell.type === 'trap') return cell.trapUsed ? '·' : Dungeon.GLYPHS.trap;
+    if (cell.type === 'enemy') return cell.enemy ? cell.enemy.glyph : Dungeon.GLYPHS.enemy;
+    if (cell.type === 'weapon') return Dungeon.GLYPHS.weapon;
+    if (cell.type === 'shield') return Dungeon.GLYPHS.shield;
+    return Dungeon.GLYPHS[cell.type] || '';
+  },
+
+  /* ---------- БЮДЖЕТ: доли от площади, с самоурезанием ----------
+     На 5x5 фиксированные числа из ориентира физически не влезают:
+     pop() вернул бы undefined и генератор упал бы на NaN. */
+  fitBudget: function (n) {
+    var total = n * n;
+    var free = Math.floor(total * 0.70) - 3;   /* минус спавн, выход, ключ */
+    if (free < 4) free = 4;
+
+    var order = ['enemy', 'wall', 'currency', 'potion', 'trap', 'weapon', 'shield'];
+    var counts = {}, sum = 0, i;
+    for (i = 0; i < order.length; i++) {
+      counts[order[i]] = Math.round(total * CONFIG.DENSITY[order[i]]);
+      sum += counts[order[i]];
+    }
+
+    /* режем самый большой бакет, пока не влезем */
+    while (sum > free) {
+      var maxKey = null, maxVal = -1;
+      for (i = 0; i < order.length; i++) {
+        if (counts[order[i]] > maxVal) { maxVal = counts[order[i]]; maxKey = order[i]; }
+      }
+      if (!maxKey || counts[maxKey] <= 0) break;
+      counts[maxKey]--; sum--;
+    }
+    counts.sum = sum;
+    return counts;
+  },
+
+  /* ---------- ГЕНЕРАЦИЯ ЭТАЖА ---------- */
+  newFloor: function (player) {
+    var n = CONFIG.SIZE;
+    Dungeon.size = n;
+
+    var attempt, counts, cells, pool, ok;
+    for (attempt = 0; attempt < CONFIG.MAX_ATTEMPTS; attempt++) {
+      cells = Dungeon.blank(n);
+      counts = Dungeon.fitBudget(n);
+      pool = [];
+      var i;
+      for (i = 0; i < n * n; i++) pool.push(i);
+      Helpers.shuffle(pool);
+
+      ok = Dungeon.scatter(cells, pool, counts, player.floor);
+      if (!ok) continue;
+
+      Dungeon.cells = cells;                 /* ДО проверки связности! */
+      var spawn = Dungeon.pickSpawn(pool);
+      if (spawn === -1) continue;
+
+      if (!Dungeon.connectedFrom(spawn, n)) continue;
+
+      Dungeon.openFrom(spawn, n);
+      return { spawn: spawn, attempt: attempt + 1, counts: counts };
+    }
+
+    /* страховка: этаж без стен собирается всегда */
+    cells = Dungeon.blank(n);
+    pool = [];
+    var j;
+    for (j = 0; j < n * n; j++) pool.push(j);
+    Helpers.shuffle(pool);
+    var bare = Dungeon.fitBudget(n);
+    bare.wall = 0;
+    Dungeon.scatter(cells, pool, bare, player.floor);
+    Dungeon.cells = cells;
+    var sp = Dungeon.pickSpawn(pool);
+    Dungeon.openFrom(sp, n);
+    return { spawn: sp, attempt: -1, counts: bare };
+  },
+
+  blank: function (n) {
+    var cells = [], i;
+    for (i = 0; i < n * n; i++) {
+      cells.push({
+        i: i,
+        row: Math.floor(i / n),
+        col: i % n,
+        type: 'empty',
+        opened: false,
+        reachable: false,
+        lockCount: 0,
+        enemy: null,
+        item: null,
+        trapUsed: false
+      });
+    }
+    return cells;
+  },
+
+  scatter: function (cells, pool, counts, floor) {
+    var put = function (type, count, factory) {
+      var k, idx, cell;
+      for (k = 0; k < count; k++) {
+        idx = pool.pop();
+        if (idx === undefined) return false;
+        cell = cells[idx];
+        cell.type = type;
+        if (factory) cell.item = factory();
+      }
+      return true;
+    };
+
+    if (!put('exit', 1)) return false;
+    if (!put('key', 1)) return false;
+    if (!put('enemy', counts.enemy)) return false;
+    if (!put('wall', counts.wall)) return false;
+    if (!put('trap', counts.trap)) return false;
+    if (!put('currency', counts.currency)) return false;
+    if (!put('potion', counts.potion)) return false;
+    if (!put('weapon', counts.weapon, function () { return Loot.weapon(floor); })) return false;
+    if (!put('shield', counts.shield, function () { return Loot.shield(floor); })) return false;
+
+    /* полубосс: занимаем любую ещё пустую клетку */
+    if (Helpers.chance(CONFIG.SEMIBOSS_CHANCE)) {
+      var idx = pool.pop();
+      if (idx !== undefined && cells[idx].type === 'empty') {
+        cells[idx].type = 'enemy';
+        cells[idx].enemy = Monsters.makeBoss(floor);
+        cells[idx].isBossCell = true;
+      }
+    }
+
+    /* обычный моб получает монстра */
+    var i;
+    for (i = 0; i < cells.length; i++) {
+      if (cells[i].type === 'enemy' && !cells[i].enemy) {
+        cells[i].enemy = Monsters.make(floor);
+      }
+    }
+    return true;
+  },
+
+  pickSpawn: function (pool) {
+    var cand = [], i;
+    for (i = 0; i < Dungeon.cells.length; i++) {
+      if (Dungeon.cells[i].type === 'empty') cand.push(i);
+    }
+    if (cand.length === 0) return -1;
+    return Helpers.pick(cand);
+  },
+
+  neighbours: function (index, cells, eight) {
+    var n = Dungeon.size;
+    var cellsArr = cells || Dungeon.cells;
+    var r = Math.floor(index / n), c = index % n;
+    var res = [];
+    var dr, dc, nr, nc;
+    var from = eight ? -1 : 0;
+    /* крест (4) для тумана и полный охват (8) для лока врага — асимметрия намеренная */
+    if (!eight) {
+      var dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      for (var k = 0; k < dirs.length; k++) {
+        nr = r + dirs[k][0]; nc = c + dirs[k][1];
+        if (nr >= 0 && nr < n && nc >= 0 && nc < n) res.push(cellsArr[nr * n + nc]);
+      }
+    } else {
+      for (dr = -1; dr <= 1; dr++) {
+        for (dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          nr = r + dr; nc = c + dc;
+          if (nr >= 0 && nr < n && nc >= 0 && nc < n) res.push(cellsArr[nr * n + nc]);
+        }
+      }
+    }
+    return res;
+  },
+
+  /* BFS: стену нельзя обойти — если выход за ней, этаж перегенерируется */
+  connectedFrom: function (startId, n) {
+    var cells = Dungeon.cells;
+    var seen = {}, queue = [startId], count = 1, blocked = 0;
+    seen[startId] = true;
+
+    while (queue.length) {
+      var id = queue.shift();
+      var near = Dungeon.neighbours(id, cells, false), i, nb;
+      for (i = 0; i < near.length; i++) {
+        nb = near[i];
+        if (seen[nb.i]) continue;
+        if (nb.type === 'wall') { blocked++; continue; }
+        seen[nb.i] = true; count++; queue.push(nb.i);
+      }
+    }
+    var totalOpenable = 0;
+    for (var j = 0; j < cells.length; j++) {
+      if (cells[j].type !== 'wall') totalOpenable++;
+    }
+    return count === totalOpenable;
+  },
+
+  /* Проход дальше даёт НЕ любая открытая клетка.
+     Стена — тупик: её соседи от открытия стены доступными не становятся.
+     Враг блокирован отдельно (✕ на 8 соседей), расходившаяся ловушка
+     проходима — иначе единственный вход в тупик с ловушкой отрезал бы этаж.
+     Захочешь строже — добавь тип в IMPASSABLE. */
+  IMPASSABLE: { wall: true },
+
+  passable: function (cell) {
+    return !Dungeon.IMPASSABLE[cell.type];
+  },
+
+  /* фронт тумана — производная величина, не хранится в данных */
+  refreshReachable: function () {
+    var cells = Dungeon.cells, i, cell, near, k;
+    for (i = 0; i < cells.length; i++) cells[i].reachable = false;
+    for (i = 0; i < cells.length; i++) {
+      cell = cells[i];
+      if (!cell.opened || !Dungeon.passable(cell)) continue;
+      near = Dungeon.neighbours(i, cells, false);
+      for (k = 0; k < near.length; k++) {
+        if (!near[k].opened) near[k].reachable = true;
+      }
+    }
+  },
+
+  openFrom: function (index, n) {
+    Dungeon.cells[index].opened = true;
+    Dungeon.refreshReachable();
+  },
+
+  /* ---------- КЛИК ----------
+     Возвращает { lines:[], fx:[], killed:bool, playerDead:bool, descended:bool } */
+  click: function (index, player) {
+    var out = { lines: [], fx: [], killed: false, playerDead: false, descended: false };
+    var cell = Dungeon.cells[index];
+
+    if (!cell.opened) {
+      if (!cell.reachable) return out;
+      if (cell.lockCount > 0) {
+        out.lines.push({ text: 'Заблокировано: сначала победите соседа', kind: 'bad' });
+        return out;
+      }
+
+      cell.opened = true;
+      Dungeon.refreshReachable();
+
+      if (cell.type === 'wall') {
+        out.lines.push({ text: 'Стена. Тупик', kind: '' });
+        return out;
+      }
+
+      if (cell.type === 'trap') {
+        var dmg = CONFIG.TRAP_BASE + player.floor;
+        player.hp -= dmg;
+        cell.trapUsed = true;   /* ловушка расходуется — это видно по символу */
+        out.lines.push({ text: 'Ловушка: -' + dmg + ' HP', kind: 'bad' });
+        out.fx.push('shake');
+        if (player.hp <= 0) { player.hp = 0; out.playerDead = true; }
+        return out;
+      }
+
+      if (cell.type === 'enemy') {
+        /* ✕ на 8 соседей: открыть нельзя, пока жив враг.
+           Саму клетку врага лок не трогает — тупика не бывает. */
+        var near = Dungeon.neighbours(index, Dungeon.cells, true), i;
+        for (i = 0; i < near.length; i++) {
+          if (!near[i].opened) near[i].lockCount++;
+        }
+        out.lines.push({
+          text: (cell.enemy.isBoss ? 'ЯДРО: ' : '') + cell.enemy.name + ' (HP ' + cell.enemy.hp + ')',
+          kind: 'bad'
+        });
+        return out;
+      }
+
+      if (cell.type === 'exit') out.lines.push({ text: 'Выход. Нужен ключ', kind: 'hi' });
+      else if (cell.type === 'key') out.lines.push({ text: 'Ключ — тапни ещё раз', kind: 'hi' });
+      else if (cell.type === 'weapon') out.lines.push({ text: cell.item.name + ' +' + cell.item.bonus + ' ATK', kind: 'hi' });
+      else if (cell.type === 'shield') out.lines.push({ text: cell.item.name + ' +' + cell.item.bonus + ' DEF', kind: 'hi' });
+      else out.lines.push({ text: Dungeon.openHint(cell), kind: '' });
+      return out;
+    }
+
+    /* ---------- открытая клетка ---------- */
+    if (cell.type === 'wall') return out;
+    if (cell.type === 'trap') return out;
+    if (cell.type === 'empty') return out;
+
+    if (cell.type === 'enemy') {
+      var res = Combat.attack(player, cell.enemy);
+      out.lines = res.lines;
+      out.fx = res.fx;
+      if (res.killed) {
+        out.killed = true;
+        cell.type = 'empty';
+        cell.enemy = null;
+        var nb = Dungeon.neighbours(index, Dungeon.cells, true), i;
+        for (i = 0; i < nb.length; i++) {
+          if (!nb[i].opened && nb[i].lockCount > 0) nb[i].lockCount--;
+        }
+      }
+      if (res.playerDead) out.playerDead = true;
+      Dungeon.refreshReachable();
+      return out;
+    }
+
+    if (cell.type === 'currency') {
+      var gold = CONFIG.GOLD_BASE + Helpers.randInt(0, CONFIG.GOLD_RAND) + player.floor;
+      player.gold += gold;
+      Dungeon.consume(cell);
+      out.lines.push({ text: '+' + gold + ' золота', kind: 'good' });
+      return out;
+    }
+
+    if (cell.type === 'potion') {
+      var h = Player.heal(player, CONFIG.POTION_HEAL);
+      Dungeon.consume(cell);
+      out.lines.push({
+        text: h.kind === 'max' ? 'Максимум HP +' + h.amount : '+' + h.amount + ' HP',
+        kind: 'good'
+      });
+      return out;
+    }
+
+    if (cell.type === 'key') {
+      player.hasKey = true;
+      Dungeon.consume(cell);
+      out.lines.push({ text: 'Ключ взят', kind: 'hi' });
+      return out;
+    }
+
+    if (cell.type === 'weapon') {
+      var oldW = Player.equipWeapon(player, cell.item);
+      Dungeon.consume(cell);
+      out.lines.push({ text: oldW ? 'Сменено оружие' : 'Оружие взято', kind: 'good' });
+      return out;
+    }
+
+    if (cell.type === 'shield') {
+      var oldS = Player.equipShield(player, cell.item);
+      Dungeon.consume(cell);
+      out.lines.push({ text: oldS ? 'Сменена защита' : 'Защита взята', kind: 'good' });
+      return out;
+    }
+
+    if (cell.type === 'exit') {
+      if (!player.hasKey) {
+        out.lines.push({ text: 'Заперто. Нужен ключ', kind: 'bad' });
+        return out;
+      }
+      player.hasKey = false;
+      out.descended = true;
+      return out;
+    }
+
+    return out;
+  },
+
+  openHint: function (cell) {
+    if (cell.type === 'currency') return 'Золото';
+    if (cell.type === 'potion') return 'Зелье';
+    return 'Пусто';
+  },
+
+  consume: function (cell) {
+    cell.type = 'empty';
+    cell.item = null;
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/core/game.js
+  // Ранее: внешний скрипт src="js/core/game.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* Единственный, кто связывает данные, поле и отрисовку. */
+var Game = {
+  player: null,
+  heroIndex: 0,
+  over: false,
+
+  start: function () {
+    Game.player = Player.create(HEROES[Game.heroIndex]);
+    Game.over = false;
+    Renderer.clearLog();
+    Renderer.buildGrid();
+    ScreenManager.show('screen-dungeon');
+    Animations.hideDeath();
+    Game.newFloor();
+  },
+
+  newFloor: function () {
+    var res = Dungeon.newFloor(Game.player);
+    Renderer.renderFloor(Dungeon.cells);
+    Renderer.updateHud(Game.player);
+    Renderer.log('Этаж ' + Game.player.floor + '. Туман рассеивается...', 'hi');
+    if (res.attempt === -1) {
+      Renderer.log('Связный расклад не собрался — этаж без стен', 'bad');
+    }
+    console.log('floor', Game.player.floor,
+      'size', CONFIG.SIZE,
+      'attempt', res.attempt,
+      'counts', JSON.stringify(res.counts));
+  },
+
+  onTile: function (index) {
+    if (Game.over || !Game.player) return;
+    if (index < 0 || index >= Dungeon.cells.length) return;
+
+    var res = Dungeon.click(index, Game.player);
+    var i;
+
+    for (i = 0; i < res.lines.length; i++) {
+      Renderer.log(res.lines[i].text, res.lines[i].kind);
+    }
+    /* порядок важен: renderFloor перекрашивает className целиком,
+       поэтому эффекты — строго после перерисовки */
+    Renderer.renderFloor(Dungeon.cells);
+    Renderer.updateHud(Game.player);
+
+    for (i = 0; i < res.fx.length; i++) {
+      if (res.fx[i] === 'shake') Animations.shake();
+      if (res.fx[i] === 'flash') Animations.flash(Renderer.cellEl(index));
+    }
+
+    if (res.playerDead) { Game.die(); return; }
+    if (res.descended) {
+      Game.player.floor++;
+      Renderer.updateHud(Game.player);
+      Game.newFloor();
+    }
+  },
+
+  die: function () {
+    Game.over = true;
+    Renderer.log('Вы погибли', 'bad');
+    GameStorage.commit(Game.player.floor, Game.player.kills);
+    window.setTimeout(function () {
+      Renderer.showDeath(Game.player.floor);
+    }, 350);
+  },
+
+  toMenu: function () {
+    Animations.hideDeath();
+    if (Game.player && !Game.over) {
+      GameStorage.commit(Game.player.floor, Game.player.kills);
+    }
+    Game.player = null;
+    Game.over = false;
+    Game.renderRecords();
+    ScreenManager.show('screen-start');
+  },
+
+  renderRecords: function () {
+    var r = GameStorage.read();
+    Renderer.text('rec-floor', r.bestFloor);
+    Renderer.text('rec-kills', r.totalKills);
+  }
+};
+  </script>
+  <script>
+  // ──────────────────────────────────────────────
+  // Файл: js/main.js
+  // Ранее: внешний скрипт src="js/main.js", подключался в конце BODY
+  // ──────────────────────────────────────────────
+/* точка входа: только привязка кнопок и первичный рендер */
+function renderHeroCard() {
+  var h = HEROES[Game.heroIndex];
+  Renderer.text('hero-icon', h.glyph);
+  Renderer.text('hero-name', h.name);
+  Renderer.text('hero-hp', h.hp);
+  Renderer.text('hero-atk', h.atk);
+  Renderer.text('hero-def', h.def);
+  Renderer.text('hero-desc', h.desc);
+  Renderer.text('hero-ability', h.ability);
+}
+
+/* Кнопка «очистить сохранения» живёт на стартовом экране.
+   Оборачиваем renderRecords, чтобы актуальное состояние кнопки
+   обновлялось при каждом возврате к рекордам. */
+(function () {
+  var orig = Game.renderRecords;
+  Game.renderRecords = function () {
+    orig.call(Game);
+    var b = document.getElementById('btn-clear-save');
+    if (b) b.disabled = !GameStorage.hasData();
+  };
+})();
+
+document.addEventListener('DOMContentLoaded', function () {
+
+  Game.renderRecords();
+  renderHeroCard();
+  ScreenManager.init();
+
+  ScreenManager.on('btn-to-character', function () {
+    ScreenManager.show('screen-character');
+  });
+
+  ScreenManager.on('btn-character-to-start', function () {
+    Game.renderRecords();
+    ScreenManager.show('screen-start');
+  });
+
+  ScreenManager.on('btn-hero-prev', function () {
+    Game.heroIndex = (Game.heroIndex - 1 + HEROES.length) % HEROES.length;
+    renderHeroCard();
+  });
+
+  ScreenManager.on('btn-hero-next', function () {
+    Game.heroIndex = (Game.heroIndex + 1) % HEROES.length;
+    renderHeroCard();
+  });
+
+  ScreenManager.on('btn-to-dungeon', function () {
+    Game.start();
+  });
+
+  ScreenManager.on('btn-dungeon-to-start', function () {
+    if (window.confirm('Выйти в меню? Прогресс забега будет потерян.')) Game.toMenu();
+  });
+
+  ScreenManager.on('btn-death-menu', function () {
+    Game.toMenu();
+  });
+
+  ScreenManager.on('btn-clear-save', function () {
+    var r = GameStorage.read();
+    if (!window.confirm('Удалить сохранения? Лучший этаж: ' + r.bestFloor +
+                        ', убийств всего: ' + r.totalKills + '. Отменить это нельзя.')) return;
+    Renderer.note('clear-note',
+      GameStorage.clear() ? 'Сохранения удалены' : 'Локальное хранилище недоступно',
+      'good');
+    Game.renderRecords();
+  });
+
+  ScreenManager.on('btn-death-retry', function () {
+    Animations.hideDeath();
+    Game.start();
+  });
+
+  /* один обработчик на всю сетку вместо 64 слушателей */
+  var grid = document.getElementById('game-grid');
+  if (grid) {
+    grid.addEventListener('click', function (ev) {
+      var node = ev.target;
+      while (node && node !== grid && !node.getAttribute('data-id')) node = node.parentNode;
+      if (!node || node === grid) return;
+      Game.onTile(parseInt(node.getAttribute('data-id'), 10));
+    });
+  }
+
+  window.addEventListener('resize', function () { Renderer.sizeFont(); });
+});
+  </script>
+</body>
+</html>
